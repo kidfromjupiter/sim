@@ -232,3 +232,87 @@ FG_INITIAL_UNITS = {
     "WALL-HUNG-PREM": 100,
 }
 FG_MAX_UNITS = {k: 5_000 for k in PRODUCTS}
+
+# ── Customer demand ───────────────────────────────────────────────────────────
+DEMAND = {
+    "mean_orders_per_day": 5,
+    "mean_order_units":    25,
+    "std_order_units":     8,
+    "min_order_units":     5,
+    "std_lead_time_days":    7,    # standard service promise
+    "express_lead_time_days": 3,
+    "express_fraction":    0.20,
+    "express_premium":     1.15,  # 15 % price uplift for express
+}
+
+CUSTOMERS = [
+    "BuildCo Portugal", "Iberian Sanitary Distributors", "ConstructMax S.A.",
+    "Mediterranean Build", "Porto Renovations", "Atlantic Contracts Ltd",
+    "HomeStyle Iberia", "SaniPro Europe", "Lisbon Interiors",
+    "Douro Construction Group",
+]
+
+# ── Quality parameters ────────────────────────────────────────────────────────
+QUALITY = {
+    "grade_a_rate":         0.75,   # Prime quality — full price
+    "grade_b_rate":         0.15,   # Seconds — sold at a discount
+    "reject_rate":          0.10,   # Scrapped (higher than tiles)
+    "grade_b_price_factor": 0.65,
+    # Functional testing pass rates
+    "leak_test_pass_rate":  0.98,
+    "flush_test_pass_rate": 0.97,
+}
+
+# ── Financial parameters ──────────────────────────────────────────────────────
+FINANCIAL = {
+    "energy_cost_per_batch_eur":      280,   # Gas + electricity per 50-unit batch (longer kiln)
+    "labor_cost_per_shift_eur":     3_500,   # One 8-hour shift (more skilled labor)
+    "shifts_per_day":                   3,
+    "breakdown_repair_cost_eur":    2_500,   # Average cost per incident
+    "stockout_penalty_eur_unit":       25,   # Lost margin + expediting cost per unit
+    "holding_cost_pct_per_year":     0.20,   # 20 % of FG value per annum
+}
+
+# ── Scenario definitions ──────────────────────────────────────────────────────
+SCENARIOS = {
+    "baseline": {
+        "label":       "Baseline",
+        "description": "Normal 90-day operations — balanced supply & demand",
+        "demand_factor":               1.0,
+        "machine_reliability_factor":  1.0,
+        "supplier_reliability_factor": 1.0,
+        "extra_kilns":                 0,
+        "safety_stock_factor":         1.0,
+        "kaolin_disruption":           None,   # (start_hr, end_hr) or None
+    },
+    "supply_disruption": {
+        "label":       "Supply Disruption",
+        "description": "KaolinMine S.A. — 35-day Brazilian port strike (Day 15–50)",
+        "demand_factor":               1.0,
+        "machine_reliability_factor":  1.0,
+        "supplier_reliability_factor": 1.0,
+        "extra_kilns":                 0,
+        "safety_stock_factor":         1.0,
+        "kaolin_disruption":           (15 * HOURS_PER_DAY, 50 * HOURS_PER_DAY),
+    },
+    "demand_surge": {
+        "label":       "Demand Surge",
+        "description": "Summer construction boom — 30 % demand uplift across all products",
+        "demand_factor":               1.30,
+        "machine_reliability_factor":  1.0,
+        "supplier_reliability_factor": 1.0,
+        "extra_kilns":                 0,
+        "safety_stock_factor":         1.0,
+        "kaolin_disruption":           None,
+    },
+    "optimised": {
+        "label":       "Optimised",
+        "description": "2nd tunnel kiln installed + 50 % safety stock uplift across all raw materials",
+        "demand_factor":               1.0,
+        "machine_reliability_factor":  1.0,
+        "supplier_reliability_factor": 1.0,
+        "extra_kilns":                 1,      # Total kilns: 2
+        "safety_stock_factor":         1.5,    # Reorder points × 1.5
+        "kaolin_disruption":           None,
+    },
+}
