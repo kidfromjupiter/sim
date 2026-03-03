@@ -114,4 +114,68 @@ class MetricsCollector:
                         "stockout_events", "partial_fulfils", "avg_lead_time_days"):
                 k[key] = 0.0
 
+        # ── Financial ─────────────────────────────────────────────────────────
+        rev_a = sum(
+            b.grade_a_units * PRODUCTS[b.product]["price_eur_unit"]
+            for b in batches
+        )
+        rev_b = sum(
+            b.grade_b_units * PRODUCTS[b.product]["price_eur_unit"] * QUALITY["grade_b_price_factor"]
+            for b in batches
+        )
+        raw_mat_cost   = sum(d.total_cost_eur  for d in self.deliveries)
+        energy_cost    = k["total_batches"] * FINANCIAL["energy_cost_per_batch_eur"]
+        labor_cost     = (sim_days * FINANCIAL["shifts_per_day"]
+                          * FINANCIAL["labor_cost_per_shift_eur"])
+        breakdown_cost = len(self.breakdowns) * FINANCIAL["breakdown_repair_cost_eur"]
+        stockout_cost  = (sum(e["quantity_units"] for e in self.stockout_events)
+                          * FINANCIAL["stockout_penalty_eur_unit"])
+
+        total_revenue = rev_a + rev_b
+        total_cost    = raw_mat_cost + energy_cost + labor_cost + breakdown_cost + stockout_cost
+
+        k["revenue_eur"]       = total_revenue
+        k["raw_mat_cost_eur"]  = raw_mat_cost
+        k["energy_cost_eur"]   = energy_cost
+        k["labor_cost_eur"]    = labor_cost
+        k["breakdown_cost_eur"]= breakdown_cost
+        k["stockout_cost_eur"] = stockout_cost
+        k["total_cost_eur"]    = total_cost
+        k["gross_profit_eur"]  = total_revenue - raw_mat_cost - energy_cost
+        k["net_profit_eur"]    = total_revenue - total_cost
+        k["gross_margin_pct"]  = ((k["gross_profit_eur"] / total_revenue * 100)
+                                  if total_revenue else 0.0)
+        k["net_margin_pct"]    = ((k["net_profit_eur"] / total_revenue * 100)
+                                  if total_revenue else 0.0)
+
+        # ── Machine reliability ────────────────────────────────────────────────
+        k["total_breakdowns"]   = len(self.breakdowns)
+        k["breakdown_hours"]    = sum(b.repair_duration for b in self.breakdowns)
+        k["disruption_hours"]   = self.disruption_hours
+
+        # Breakdowns per machine type
+        k["breakdowns_by_machine"] = {}
+        for mkey in MACHINES:
+            k["breakdowns_by_machine"][mkey] = sum(
+                1 for b in self.breakdowns if b.machine_id == mkey
+            )
+
+        # ── Supplier performance ───────────────────────────────────────────────
+        if self.deliveries:
+            k["total_deliveries"]          = len(self.deliveries)
+            k["avg_supplier_lead_time_hr"] = (
+                sum(d.lead_time_hr for d in self.deliveries) / len(self.deliveries)
+            )
+            k["on_time_delivery_pct"] = (
+                sum(1 for d in self.deliveries if d.on_time) / len(self.deliveries) * 100
+            )
+        else:
+            k["total_deliveries"]          = 0
+            k["avg_supplier_lead_time_hr"] = 0.0
+            k["on_time_delivery_pct"]      = 0.0
+
+        # ── Stall / raw-material shortage ────────────────────────────────────
+        k["slip_prep_stall_hrs"] = len(self.stall_log["slip_prep"])
+        k["glaze_stall_hrs"]     = len(self.stall_log["glazing"])
+
         return k
