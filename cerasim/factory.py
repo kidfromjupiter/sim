@@ -171,12 +171,69 @@ class CeramicFactory:
     # =========================================================================
 
     def supply_monitor(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Inventory review every 4 hours.
+        Triggers replenishment orders when stock falls below the reorder point.
+        A maximum of 2 in-flight orders per material prevents over-ordering.
+        """
+        while True:
+            yield self.env.timeout(4)
+
+            for mat, cfg in SUPPLIERS.items():
+                # ── Scenario: kaolin supply disruption ────────────────────────
+                disruption = self.scen["kaolin_disruption"]
+                if disruption and mat == "kaolin":
+                    d_start, d_end = disruption
+                    if d_start <= self.env.now <= d_end:
+                        self.metrics.disruption_hours += 4
+                        continue   # No kaolin orders during the strike
+
+                reorder_pt = cfg["reorder_point_t"] * self.scen["safety_stock_factor"]
+                if (
+                    self.raw_mat[mat].level < reorder_pt
+                    and self._pending_replen[mat] < 2
+                ):
+                    self._pending_replen[mat] += 1
+                    self.env.process(self._supplier_delivery(mat))
 
     def _supplier_delivery(self, material: str):
-        yield self.env.timeout(0)
+        """
+        Simulate one supplier delivery:
+          1. Compute lead time (Normal, truncated at 4 h minimum).
+          2. Apply reliability — unreliable suppliers add random delays.
+          3. Arrive at factory gate and top up the raw-material container.
+        """
+        cfg        = SUPPLIERS[material]
+        ordered_at = self.env.now
+        rel_factor = self.scen["supplier_reliability_factor"]
 
+        lead_t  = max(4.0, random.normalvariate(
+            cfg["lead_time_mean_hr"], cfg["lead_time_std_hr"]
+        ))
+        eff_rel = cfg["reliability"] * rel_factor
+        on_time = random.random() < eff_rel
+        if not on_time:
+            lead_t *= random.uniform(1.25, 2.50)   # Late delivery penalty
+
+        yield self.env.timeout(lead_t)
+
+        space   = self.raw_mat[material].capacity - self.raw_mat[material].level
+        qty     = min(cfg["delivery_qty_t"], space)
+        if qty > 0:
+            yield self.raw_mat[material].put(qty)
+
+        self.metrics.deliveries.append(SupplierDelivery(
+            supplier_name   = cfg["name"],
+            material        = material,
+            quantity_tonnes = qty,
+            unit_cost_eur_t = cfg["unit_cost_eur_t"],
+            ordered_at      = ordered_at,
+            delivered_at    = self.env.now,
+            on_time         = on_time,
+        ))
+        self._pending_replen[material] -= 1
+
+    # =========================================================================
     # Production stages
     # =========================================================================
 
