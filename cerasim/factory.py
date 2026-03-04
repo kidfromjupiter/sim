@@ -117,11 +117,56 @@ class CeramicFactory:
     # =========================================================================
 
     def _proc_time(self, machine_key: str) -> Tuple[float, bool]:
-        return MACHINES[machine_key]["proc_mean_hr"], False
+        """
+        Sample processing time for one batch on *machine_key*.
+
+        Returns ``(duration_hours, had_breakdown)``.  If a breakdown occurs,
+        ``duration_hours`` already includes the repair time so the caller
+        just yields a single timeout.
+        """
+        cfg     = MACHINES[machine_key]
+        rel     = self.scen["machine_reliability_factor"]
+        base_t  = max(0.05, random.normalvariate(cfg["proc_mean_hr"], cfg["proc_std_hr"]))
+        eff_mtbf = cfg["mtbf_hr"] * rel
+
+        # Probability of at least one failure in *base_t* hours of operation
+        p_fail  = 1.0 - math.exp(-base_t / eff_mtbf)
+        if random.random() < p_fail:
+            repair_t = random.expovariate(1.0 / cfg["mttr_hr"])
+            event = BreakdownEvent(
+                machine_id      = machine_key,
+                machine_name    = cfg["name"],
+                occurred_at     = self.env.now + base_t,
+                repair_duration = repair_t,
+                repair_cost_eur = FINANCIAL["breakdown_repair_cost_eur"],
+            )
+            self.metrics.breakdowns.append(event)
+            return base_t + repair_t, True
+        return base_t, False
 
     def _choose_product(self) -> str:
-        return next(iter(PRODUCTS))
+        """
+        Weighted product selection for a new press batch.
 
+        Biases toward products whose finished-goods level is below target
+        so the factory naturally replenishes low-stock SKUs.
+        """
+        scores = {}
+        for prod, cfg in PRODUCTS.items():
+            level  = self.fg[prod].level
+            target = FG_INITIAL_UNITS[prod] * 2.0
+            deficit_bonus = max(0.0, (target - level) / target) * 0.25
+            scores[prod]  = cfg["demand_share"] + deficit_bonus
+
+        total = sum(scores.values())
+        r, cum = random.random() * total, 0.0
+        for prod, s in scores.items():
+            cum += s
+            if r <= cum:
+                return prod
+        return list(PRODUCTS.keys())[0]
+
+    # =========================================================================
     # Supply-chain processes
     # =========================================================================
 
