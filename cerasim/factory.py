@@ -447,13 +447,77 @@ class CeramicFactory:
     # =========================================================================
 
     def demand_generator(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Generates customer orders via a Poisson arrival process.
+
+        Inter-arrival times are Exponential(λ) where λ = orders/hour.
+        Order sizes are drawn from a truncated Normal distribution.
+        """
+        counter = 0
+        while True:
+            df        = self.scen["demand_factor"]
+            rate_hr   = DEMAND["mean_orders_per_day"] * df / HOURS_PER_DAY
+            yield self.env.timeout(random.expovariate(rate_hr))
+
+            counter += 1
+            is_express = random.random() < DEMAND["express_fraction"]
+            product    = random.choices(
+                list(PRODUCTS.keys()),
+                weights=[PRODUCTS[p]["demand_share"] for p in PRODUCTS],
+            )[0]
+            qty = max(
+                DEMAND["min_order_units"],
+                random.normalvariate(DEMAND["mean_order_units"], DEMAND["std_order_units"]),
+            )
+            lead_days  = (DEMAND["express_lead_time_days"] if is_express
+                          else DEMAND["std_lead_time_days"])
+            base_price = PRODUCTS[product]["price_eur_unit"]
+            unit_price = base_price * (DEMAND["express_premium"] if is_express else 1.0)
+
+            order = CustomerOrder(
+                order_id    = f"ORD-{counter:04d}",
+                customer    = random.choice(CUSTOMERS),
+                product     = product,
+                quantity_units = int(round(qty)),
+                is_express  = is_express,
+                created_at  = self.env.now,
+                due_at      = self.env.now + lead_days * HOURS_PER_DAY,
+                unit_price  = unit_price,
+            )
+            self.metrics.orders.append(order)
+            yield self.order_queue.put(order)
 
     def order_fulfilment(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Picks orders from the shared queue and ships from finished-goods stock.
 
+        Full fulfilment: ship everything immediately.
+        Partial fulfilment: ship what is available, record a partial.
+        Zero stock: record a stockout.
+        """
+        while True:
+            order = yield self.order_queue.get()
+            fg    = self.fg[order.product]
+            avail = fg.level
+
+            if avail >= order.quantity_units:
+                yield fg.get(order.quantity_units)
+                order.fulfilled_qty = order.quantity_units
+            elif avail > 0:
+                yield fg.get(avail)
+                order.fulfilled_qty = avail
+                self.metrics.partial_fulfils += 1
+            else:
+                # Complete stockout — lost sale
+                self.metrics.stockout_events.append({
+                    "time":        self.env.now,
+                    "product":     order.product,
+                    "quantity_units": order.quantity_units,
+                })
+
+            order.fulfilled_at = self.env.now
+
+    # =========================================================================
     # Monitoring
     # =========================================================================
 
