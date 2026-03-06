@@ -559,4 +559,40 @@ class CeramicFactory:
     # =========================================================================
 
     def register_processes(self) -> None:
-        pass
+        """
+        Register every SimPy process.  Call this before ``env.run()``.
+        """
+        env = self.env
+
+        # Supply chain
+        env.process(self.supply_monitor())
+        # Kick-start initial deliveries for all materials
+        for mat in SUPPLIERS:
+            env.process(self._supplier_delivery(mat))
+
+        # Production pipeline — N workers per stage ≈ N machines
+        for _ in range(MACHINES["slip_prep"]["count"]):
+            env.process(self.slip_preparation())
+        for _ in range(MACHINES["casting"]["count"]):
+            env.process(self.pressure_casting())
+        for _ in range(MACHINES["demolding"]["count"]):
+            env.process(self.demolding_and_drying())
+        for _ in range(MACHINES["fettling"]["count"]):
+            env.process(self.fettling())
+        for _ in range(MACHINES["glazing"]["count"]):
+            env.process(self.spray_glazing())
+
+        kiln_count = MACHINES["kiln"]["count"] + self.scen["extra_kilns"]
+        for _ in range(kiln_count):
+            env.process(self.kiln_firing())
+
+        for _ in range(MACHINES["finishing"]["count"]):
+            env.process(self.finishing())
+
+        # Demand & fulfilment
+        env.process(self.demand_generator())
+        for _ in range(4):   # 4 fulfilment workers → no bottleneck here
+            env.process(self.order_fulfilment())
+
+        # Daily KPI snapshot
+        env.process(self.daily_recorder())
