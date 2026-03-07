@@ -522,14 +522,77 @@ class CeramicFactory:
     # =========================================================================
 
     def daily_recorder(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Snapshots key system state once per simulated day for trend charts.
+        """
+        while True:
+            yield self.env.timeout(HOURS_PER_DAY)
+            day = int(self.env.now / HOURS_PER_DAY)
+
+            self.metrics.daily_snapshots.append({
+                "day":           day,
+                "raw_mat":       {m: self.raw_mat[m].level for m in SUPPLIERS},
+                "slip":          self.slip_buffer.level,
+                "fg":            {p: self.fg[p].level for p in PRODUCTS},
+                "produced_units": dict(self._daily_prod),
+                "wip":           (len(self.cast_store.items)
+                                  + len(self.demolded_store.items)
+                                  + len(self.fettled_store.items)
+                                  + len(self.glazed_store.items)
+                                  + len(self.fired_store.items)),
+                "utilization":   self._current_utilization(),
+            })
+            self._daily_prod = {p: 0 for p in PRODUCTS}
 
     def _current_utilization(self) -> Dict[str, float]:
-        return {}
+        """Cumulative utilisation fraction for each machine group."""
+        util = {}
+        for key, res in self.machines.items():
+            denom = res.capacity * self.env.now
+            util[key] = (
+                min(1.0, self._machine_busy_hr[key] / denom) if denom > 0 else 0.0
+            )
+        return util
 
+    # =========================================================================
     # Bootstrap
     # =========================================================================
 
     def register_processes(self) -> None:
-        pass
+        """
+        Register every SimPy process.  Call this before ``env.run()``.
+        """
+        env = self.env
+
+        # Supply chain
+        env.process(self.supply_monitor())
+        # Kick-start initial deliveries for all materials
+        for mat in SUPPLIERS:
+            env.process(self._supplier_delivery(mat))
+
+        # Production pipeline — N workers per stage ≈ N machines
+        for _ in range(MACHINES["slip_prep"]["count"]):
+            env.process(self.slip_preparation())
+        for _ in range(MACHINES["casting"]["count"]):
+            env.process(self.pressure_casting())
+        for _ in range(MACHINES["demolding"]["count"]):
+            env.process(self.demolding_and_drying())
+        for _ in range(MACHINES["fettling"]["count"]):
+            env.process(self.fettling())
+        for _ in range(MACHINES["glazing"]["count"]):
+            env.process(self.spray_glazing())
+
+        kiln_count = MACHINES["kiln"]["count"] + self.scen["extra_kilns"]
+        for _ in range(kiln_count):
+            env.process(self.kiln_firing())
+
+        for _ in range(MACHINES["finishing"]["count"]):
+            env.process(self.finishing())
+
+        # Demand & fulfilment
+        env.process(self.demand_generator())
+        for _ in range(4):   # 4 fulfilment workers → no bottleneck here
+            env.process(self.order_fulfilment())
+
+        # Daily KPI snapshot
+        env.process(self.daily_recorder())
