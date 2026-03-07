@@ -157,13 +157,65 @@ def print_kpi_table(scenario_id: str, kpis: dict) -> None:
     console.print()
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Cross-scenario comparison table
 # ─────────────────────────────────────────────────────────────────────────────
 
 def print_comparison_table(results: Dict[str, Tuple]) -> None:
-    return None
+    console.rule("[bold yellow]Scenario Comparison (90-day summary)[/bold yellow]")
+
+    t = Table(box=box.DOUBLE_EDGE, show_header=True, header_style="bold yellow")
+    t.add_column("Metric", style="cyan", min_width=30)
+
+    scen_ids = list(results.keys())
+    for sid in scen_ids:
+        colour = SCENARIO_COLORS.get(sid, "white")
+        t.add_column(
+            Text(SCENARIOS[sid]["label"], style=f"bold {colour}"),
+            justify="right", min_width=16,
+        )
+
+    def _fmt(v, fmt=","):
+        if isinstance(v, float):
+            if fmt == "pct":
+                colour = "green" if v >= 90 else ("yellow" if v >= 75 else "red")
+                return f"[{colour}]{v:.1f}%[/{colour}]"
+            return f"{v:,.0f}"
+        return str(v)
+
+    kpis_list = [results[s][1] for s in scen_ids]
+
+    rows = [
+        ("Output (units)",          "total_production_m2",  ","),
+        ("Avg daily output (units)", "avg_daily_m2",          ","),
+        ("Fill rate",            "fill_rate_pct",         "pct"),
+        ("On-time delivery",     "otd_rate_pct",          "pct"),
+        ("Avg lead time (days)", "avg_lead_time_days",    "f2"),
+        ("Stockout events",      "stockout_events",        ","),
+        ("Total breakdowns",     "total_breakdowns",       ","),
+        ("Downtime (h)",         "breakdown_hours",        ","),
+        ("Revenue (€)",          "revenue_eur",            ","),
+        ("Net profit (€)",       "net_profit_eur",         ","),
+        ("Net margin",           "net_margin_pct",        "pct"),
+        ("Kaolin stall (h)",     "disruption_hours",       ","),
+    ]
+
+    for label, key, fmt in rows:
+        vals = []
+        for k in kpis_list:
+            v = k.get(key, 0)
+            if fmt == "pct":
+                colour = "green" if v >= 90 else ("yellow" if v >= 75 else "red")
+                vals.append(f"[{colour}]{v:.1f}%[/{colour}]")
+            elif fmt == "f2":
+                vals.append(f"{v:.2f}")
+            else:
+                vals.append(f"{v:,.0f}")
+        t.add_row(label, *vals)
+
+    console.print(t)
+    console.print()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Matplotlib dashboard
