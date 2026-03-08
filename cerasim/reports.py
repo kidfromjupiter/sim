@@ -230,7 +230,148 @@ def _style_ax(ax, title):
 
 
 def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str) -> str:
-    return ""
+    """
+    Generate a 3×2 matplotlib dashboard for a single scenario.
+    Returns the saved file path.
+    """
+    snaps = factory.metrics.daily_snapshots
+    if not snaps:
+        return ""
+
+    days         = [s["day"]   for s in snaps]
+    mat_names    = list(SUPPLIERS.keys())
+    prod_names   = list(PRODUCTS.keys())
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    fig.suptitle(
+        f"{FACTORY_NAME}  ·  {SCENARIOS[scenario_id]['label']}\n"
+        f"{SCENARIOS[scenario_id]['description']}",
+        fontsize=11, fontweight="bold", y=1.01,
+    )
+    plt.subplots_adjust(hspace=0.45, wspace=0.35)
+
+    # ── (0,0) Raw material inventory ──────────────────────────────────────
+    ax = axes[0][0]
+    mat_colors = ["#8B4513", "#DAA520", "#708090", "#4682B4", "#48A999"]
+    for mat, col in zip(mat_names, mat_colors):
+        vals = [s["raw_mat"][mat] for s in snaps]
+        ax.plot(days, vals, label=mat.capitalize(), color=col, linewidth=1.4)
+        reorder = SUPPLIERS[mat]["reorder_point_t"]
+        ax.axhline(reorder, color=col, linewidth=0.6, linestyle="--", alpha=0.5)
+
+    # Mark kaolin disruption
+    disruption = SCENARIOS[scenario_id]["kaolin_disruption"]
+    if disruption:
+        d_s = disruption[0] / 24
+        d_e = disruption[1] / 24
+        ax.axvspan(d_s, d_e, color="#E63946", alpha=0.12, label="Disruption")
+
+    ax.set_ylabel("Stock (tonnes)", fontsize=8)
+    ax.set_xlabel("Day", fontsize=8)
+    ax.legend(fontsize=6, ncol=2, loc="upper right")
+    _style_ax(ax, "Raw Material Inventory")
+
+    # ── (0,1) Daily production by product ──────────────────────────────────
+    ax = axes[0][1]
+    bottom = np.zeros(len(days))
+    for prod in prod_names:
+        vals = np.array([s["produced_m2"].get(prod, 0) for s in snaps])
+        ax.bar(days, vals, bottom=bottom,
+               color=PRODUCT_COLORS[prod], label=prod, alpha=0.85, width=0.9)
+        bottom += vals
+    ax.set_ylabel("units / day", fontsize=8)
+    ax.set_xlabel("Day", fontsize=8)
+    ax.legend(fontsize=6, loc="lower right")
+    _style_ax(ax, "Daily Production by Product")
+
+    # ── (0,2) Finished-goods warehouse levels ───────────────────────────────
+    ax = axes[0][2]
+    for prod in prod_names:
+        vals = [s["fg"][prod] for s in snaps]
+        ax.plot(days, vals, color=PRODUCT_COLORS[prod],
+                label=prod, linewidth=1.4)
+    ax.set_ylabel("Stock (units)", fontsize=8)
+    ax.set_xlabel("Day", fontsize=8)
+    ax.legend(fontsize=6)
+    _style_ax(ax, "Finished-Goods Warehouse")
+
+    # ── (1,0) Machine utilisation (final cumulative) ────────────────────────
+    ax = axes[1][0]
+    final_util = snaps[-1]["utilization"]
+    mach_labels = [MACHINES[k]["name"].replace(" ", "\n") for k in MACHINES]
+    util_vals   = [final_util.get(k, 0) * 100 for k in MACHINES]
+    bar_cols    = ["#2E86AB", "#A23B72", "#F18F01", "#E63946", "#2EC4B6"]
+    bars = ax.barh(mach_labels, util_vals, color=bar_cols, alpha=0.85)
+    ax.axvline(85, color="red", linewidth=1.0, linestyle="--", alpha=0.7, label="85 % threshold")
+    ax.set_xlim(0, 105)
+    ax.set_xlabel("Utilisation (%)", fontsize=8)
+    for bar, v in zip(bars, util_vals):
+        ax.text(v + 1, bar.get_y() + bar.get_height() / 2,
+                f"{v:.0f}%", va="center", fontsize=7)
+    ax.legend(fontsize=6)
+    _style_ax(ax, "Machine Utilisation (cumulative)")
+
+    # ── (1,1) Rolling 7-day order fill rate ────────────────────────────────
+    ax = axes[1][1]
+    orders = factory.metrics.orders
+    if orders:
+        # Bin fulfilled units and ordered units by day
+        daily_ord  = np.zeros(SIM_DAYS + 1)
+        daily_ful  = np.zeros(SIM_DAYS + 1)
+        for o in orders:
+            d = int(o.created_at / 24)
+            if d <= SIM_DAYS:
+                daily_ord[d] += o.quantity_m2
+                daily_ful[d] += o.fulfilled_qty
+
+        rolling_rate = []
+        for i in range(len(daily_ord)):
+            window_ord = daily_ord[max(0, i-6):i+1].sum()
+            window_ful = daily_ful[max(0, i-6):i+1].sum()
+            rolling_rate.append(
+                (window_ful / window_ord * 100) if window_ord > 0 else 100.0
+            )
+        ax.plot(range(len(rolling_rate)), rolling_rate,
+                color=SCENARIO_COLORS[scenario_id], linewidth=1.6)
+        ax.axhline(95, color="green", linewidth=0.8, linestyle="--", alpha=0.6, label="95% target")
+        ax.set_ylim(0, 105)
+        ax.set_ylabel("Fill rate (%)", fontsize=8)
+        ax.set_xlabel("Day", fontsize=8)
+        ax.legend(fontsize=6)
+    _style_ax(ax, "7-day Rolling Order Fill Rate")
+
+    # ── (1,2) Cumulative revenue vs cost ───────────────────────────────────
+    ax = axes[1][2]
+    batches = factory.metrics.completed_batches
+    if batches:
+        # Sort by finished_at
+        sorted_b = sorted(batches, key=lambda b: b.finished_at or 0)
+        times    = [(b.finished_at or 0) / 24 for b in sorted_b]
+        cum_rev  = np.cumsum([
+            b.grade_a_m2 * PRODUCTS[b.product]["price_eur_m2"] +
+            b.grade_b_m2 * PRODUCTS[b.product]["price_eur_m2"] * 0.65
+            for b in sorted_b
+        ])
+        # Approximate cumulative cost (raw mat only — for clarity)
+        cum_cost = np.cumsum([
+            b.quantity_m2 * 2.40   # approx €/units raw material (see config comments)
+            for b in sorted_b
+        ])
+        ax.fill_between(times, cum_rev / 1e6, cum_cost / 1e6,
+                        alpha=0.25, color="green", label="Gross profit")
+        ax.plot(times, cum_rev  / 1e6, color="#2EC4B6",  linewidth=1.5, label="Revenue")
+        ax.plot(times, cum_cost / 1e6, color="#E63946",  linewidth=1.5, linestyle="--",
+                label="Raw mat. cost")
+        ax.set_ylabel("€ millions", fontsize=8)
+        ax.set_xlabel("Day", fontsize=8)
+        ax.legend(fontsize=6)
+    _style_ax(ax, "Cumulative Revenue vs. Raw Material Cost")
+
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"dashboard_{scenario_id}.png")
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    return path
 
 
 def plot_comparison_chart(results: Dict[str, Tuple], out_dir: str) -> str:
