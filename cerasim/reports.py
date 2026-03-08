@@ -221,6 +221,14 @@ def print_comparison_table(results: Dict[str, Tuple]) -> None:
 # Matplotlib dashboard
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _style_ax(ax, title):
+    ax.set_title(title, fontsize=9, fontweight="bold", pad=6)
+    ax.tick_params(labelsize=7)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", alpha=0.3)
+
+
 def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str) -> str:
     return ""
 
