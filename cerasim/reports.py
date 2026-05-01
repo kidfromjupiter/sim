@@ -275,7 +275,7 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
     ax = axes[0][1]
     bottom = np.zeros(len(days))
     for prod in prod_names:
-        vals = np.array([s["produced_m2"].get(prod, 0) for s in snaps])
+        vals = np.array([s["produced_units"].get(prod, 0) for s in snaps])
         ax.bar(days, vals, bottom=bottom,
                color=PRODUCT_COLORS[prod], label=prod, alpha=0.85, width=0.9)
         bottom += vals
@@ -321,7 +321,7 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
         for o in orders:
             d = int(o.created_at / 24)
             if d <= SIM_DAYS:
-                daily_ord[d] += o.quantity_m2
+                daily_ord[d] += o.quantity_units
                 daily_ful[d] += o.fulfilled_qty
 
         rolling_rate = []
@@ -348,13 +348,13 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
         sorted_b = sorted(batches, key=lambda b: b.finished_at or 0)
         times    = [(b.finished_at or 0) / 24 for b in sorted_b]
         cum_rev  = np.cumsum([
-            b.grade_a_m2 * PRODUCTS[b.product]["price_eur_m2"] +
-            b.grade_b_m2 * PRODUCTS[b.product]["price_eur_m2"] * 0.65
+            b.grade_a_units * PRODUCTS[b.product]["price_eur_unit"] +
+            b.grade_b_units * PRODUCTS[b.product]["price_eur_unit"] * 0.65
             for b in sorted_b
         ])
         # Approximate cumulative cost (raw mat only — for clarity)
         cum_cost = np.cumsum([
-            b.quantity_m2 * 2.40   # approx €/units raw material (see config comments)
+            b.quantity_units * 2.40   # approx €/units raw material (see config comments)
             for b in sorted_b
         ])
         ax.fill_between(times, cum_rev / 1e6, cum_cost / 1e6,
