@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Generated simulation output
+reports/*.png
+
+# Assignment and generated documentation artifacts
+assignment_ooad/
+*.aux
+*.log
+*.out
+*.toc
+*.pdf
+
+# Local IDE/editor state
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+#others
+commit-queue/
