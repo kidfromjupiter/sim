@@ -238,12 +238,72 @@ class CeramicFactory:
     # =========================================================================
 
     def slip_preparation(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Stage 1 — Slip preparation (ball milling + deflocculation + sieving).
+
+        Consumes raw materials and produces ceramic slip.
+        One SimPy process instance per slip-prep line.
+        """
+        BATCH = BATCH_SIZE_UNITS
+
+        # Tonnes of each mineral consumed per batch
+        mat_per_batch = {
+            mat: BATCH * AVG_BODY_KG_UNIT * frac / 1000   # kg → t
+            for mat, frac in BODY_COMPOSITION.items()
+        }
+
+        while True:
+            # ── Wait until all raw materials are available ──────────────────
+            while not all(
+                self.raw_mat[m].level >= qty
+                for m, qty in mat_per_batch.items()
+            ):
+                self.metrics.record_stall("slip_prep")
+                yield self.env.timeout(1.0)   # poll every hour
+
+            # ── Consume raw materials ────────────────────────────────────────
+            # (Safe: we checked all levels; no yield between checks and gets,
+            #  so no other body-prep process can interleave and steal stock.)
+            for m, qty in mat_per_batch.items():
+                yield self.raw_mat[m].get(qty)
+
+            # ── Process on a slip-prep line ──────────────────────────────────
+            with self.machines["slip_prep"].request() as req:
+                yield req
+                t, _ = self._proc_time("slip_prep")
+                yield self.env.timeout(t)
+                self._machine_busy_hr["slip_prep"] += t
+
+            yield self.slip_buffer.put(BATCH)
+            self.metrics.record_stage("slip_prep", BATCH)
 
     def pressure_casting(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Stage 2 — Pressure casting.
+
+        Gets slip from the buffer, assigns a product type, produces a
+        ProductionBatch object that carries the product identity downstream.
+        One process per casting mold.
+        """
+        BATCH = BATCH_SIZE_UNITS
+        while True:
+            yield self.slip_buffer.get(BATCH)
+            product = self._choose_product()
+
+            with self.machines["casting"].request() as req:
+                yield req
+                t, _ = self._proc_time("casting")
+                yield self.env.timeout(t)
+                self._machine_busy_hr["casting"] += t
+
+            batch = ProductionBatch(
+                product      = product,
+                quantity_units  = BATCH,
+                created_at   = self.env.now,
+                casting_done = self.env.now,
+            )
+            yield self.cast_store.put(batch)
+            self.metrics.record_stage("casting", BATCH)
 
     def demolding_and_drying(self):
         while False:
