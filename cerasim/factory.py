@@ -306,16 +306,76 @@ class CeramicFactory:
             self.metrics.record_stage("casting", BATCH)
 
     def demolding_and_drying(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Stage 3 — Demolding and initial drying (18h).
+
+        Extract commodes from gypsum molds and air dry for 12-24 hours.
+        This is a time-consuming but essential step for dimensional stability.
+        """
+        while True:
+            batch = yield self.cast_store.get()
+
+            with self.machines["demolding"].request() as req:
+                yield req
+                t, _ = self._proc_time("demolding")
+                yield self.env.timeout(t)
+                self._machine_busy_hr["demolding"] += t
+
+            batch.demolded_at = self.env.now
+            yield self.demolded_store.put(batch)
+            self.metrics.record_stage("demolding", batch.quantity_units)
 
     def fettling(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Stage 4 — Fettling and trimming.
+
+        Remove mold seams, smooth edges, and create water passages.
+        Critical for product quality and functionality.
+        """
+        while True:
+            batch = yield self.demolded_store.get()
+
+            with self.machines["fettling"].request() as req:
+                yield req
+                t, _ = self._proc_time("fettling")
+                yield self.env.timeout(t)
+                self._machine_busy_hr["fettling"] += t
+
+            batch.fettled_at = self.env.now
+            yield self.fettled_store.put(batch)
+            self.metrics.record_stage("fettling", batch.quantity_units)
 
     def spray_glazing(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Stage 5 — Spray glazing.
+
+        All commode products require interior and exterior glazing.
+        Applied via spray booths (manual or robotic).
+        One process per glazing booth.
+        """
+        while True:
+            batch = yield self.fettled_store.get()
+            cfg   = PRODUCTS[batch.product]
+
+            if cfg["needs_glaze"]:
+                glaze_qty = batch.quantity_units * cfg["glaze_kg_per_unit"] / 1000  # t
+
+                # ── Wait for glaze material ──────────────────────────────────
+                while self.raw_mat["glaze"].level < glaze_qty:
+                    self.metrics.record_stall("glazing")
+                    yield self.env.timeout(1.0)
+
+                yield self.raw_mat["glaze"].get(glaze_qty)
+
+                with self.machines["glazing"].request() as req:
+                    yield req
+                    t, _ = self._proc_time("glazing")
+                    yield self.env.timeout(t)
+                    self._machine_busy_hr["glazing"] += t
+
+            batch.glazing_done = self.env.now
+            yield self.glazed_store.put(batch)
+            self.metrics.record_stage("glazing", batch.quantity_units)
 
     def kiln_firing(self):
         while False:
