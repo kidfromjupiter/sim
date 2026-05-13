@@ -186,7 +186,7 @@ def print_comparison_table(results: Dict[str, Tuple]) -> None:
     kpis_list = [results[s][1] for s in scen_ids]
 
     rows = [
-        ("Output (units)",          "total_production_m2",  ","),
+        ("Output (units)",          "total_production_units",  ","),
         ("Avg daily output (units)", "avg_daily_m2",          ","),
         ("Fill rate",            "fill_rate_pct",         "pct"),
         ("On-time delivery",     "otd_rate_pct",          "pct"),
