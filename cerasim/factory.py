@@ -378,13 +378,71 @@ class CeramicFactory:
             self.metrics.record_stage("glazing", batch.quantity_units)
 
     def kiln_firing(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Stage 6 — Tunnel kiln firing (24h cycle).  ★ The production bottleneck.
+
+        One process per kiln.  24-hour firing cycle makes this the critical constraint.
+        Breakdowns here have the biggest impact on throughput.
+        """
+        while True:
+            batch = yield self.glazed_store.get()
+
+            with self.machines["kiln"].request() as req:
+                yield req
+                t, _ = self._proc_time("kiln")
+                yield self.env.timeout(t)
+                self._machine_busy_hr["kiln"] += t
+
+            batch.firing_done = self.env.now
+            yield self.fired_store.put(batch)
+            self.metrics.record_stage("kiln", batch.quantity_units)
 
     def finishing(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Stage 5 — Optical sorting, grading, and palletised packaging.
 
+        Applies the quality split (Grade A / Grade B / Reject) and moves
+        saleable tiles into the finished-goods warehouse.
+        One process per sorting & packaging line.
+        """
+        while True:
+            batch = yield self.fired_store.get()
+
+            with self.machines["finishing"].request() as req:
+                yield req
+                t, _ = self._proc_time("finishing")
+                yield self.env.timeout(t)
+                self._machine_busy_hr["finishing"] += t
+
+            q              = QUALITY
+            batch.grade_a_units = int(batch.quantity_units * q["grade_a_rate"])
+            batch.grade_b_units = int(batch.quantity_units * q["grade_b_rate"])
+            batch.reject_units  = int(batch.quantity_units * q["reject_rate"])
+
+            # Functional testing (leak test, flush test)
+            saleable = batch.saleable_units
+            batch.leak_test_pass = int(saleable * q["leak_test_pass_rate"])
+            batch.flush_test_pass = int(saleable * q["flush_test_pass_rate"])
+
+            # Only units passing both tests go to FG
+            final_saleable = min(batch.leak_test_pass, batch.flush_test_pass)
+
+            batch.finished_at = self.env.now
+
+            # Add saleable commodes to finished-goods warehouse (capped at capacity)
+            fg_store = self.fg[batch.product]
+            space    = fg_store.capacity - fg_store.level
+            put_qty  = min(final_saleable, space)
+            if put_qty > 0:
+                yield fg_store.put(put_qty)
+
+            self.metrics.completed_batches.append(batch)
+            self.metrics.record_stage("finishing", batch.quantity_units)
+            self._daily_prod[batch.product] = (
+                self._daily_prod.get(batch.product, 0) + put_qty
+            )
+
+    # =========================================================================
     # Demand & order fulfilment
     # =========================================================================
 
