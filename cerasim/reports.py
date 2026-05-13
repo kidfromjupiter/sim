@@ -76,7 +76,7 @@ def print_kpi_table(scenario_id: str, kpis: dict) -> None:
     row("── Production ──────────────────", "", "")
     row("  Total output (units)",
         f"{kpis['total_production_units']:>12,.0f}",
-        f"avg {kpis['avg_daily_m2']:,.0f} units/day")
+        f"avg {kpis['avg_daily_units']:,.0f} units/day")
     row("  Grade A (units)",
         f"{kpis['grade_a_units']:>12,.0f}",
         f"{kpis['grade_a_units']/max(1,kpis['total_production_units'])*100:.1f}% of total")
@@ -94,7 +94,7 @@ def print_kpi_table(scenario_id: str, kpis: dict) -> None:
     row("  Orders received",
         f"{kpis['total_orders']:>12,d}", "")
     row("  Total demand (units)",
-        f"{kpis['total_ordered_m2']:>12,.0f}", "")
+        f"{kpis['total_ordered_units']:>12,.0f}", "")
     row("  Quantity fill rate",
         pct_style(kpis['fill_rate_pct']), "")
     row("  Order completion rate",
@@ -187,7 +187,7 @@ def print_comparison_table(results: Dict[str, Tuple]) -> None:
 
     rows = [
         ("Output (units)",          "total_production_units",  ","),
-        ("Avg daily output (units)", "avg_daily_m2",          ","),
+        ("Avg daily output (units)", "avg_daily_units",          ","),
         ("Fill rate",            "fill_rate_pct",         "pct"),
         ("On-time delivery",     "otd_rate_pct",          "pct"),
         ("Avg lead time (days)", "avg_lead_time_days",    "f2"),
@@ -384,7 +384,7 @@ def plot_comparison_chart(results: Dict[str, Tuple], out_dir: str) -> str:
     colors    = [SCENARIO_COLORS[s] for s in scen_ids]
 
     metrics_to_compare = [
-        ("avg_daily_m2",        "Avg Daily Production\n(units/day)",     None),
+        ("avg_daily_units",        "Avg Daily Production\n(units/day)",     None),
         ("fill_rate_pct",       "Order Fill Rate\n(%)",               95),
         ("otd_rate_pct",        "On-Time Delivery\n(%)",              95),
         ("total_breakdowns",    "Machine\nBreakdowns",                None),

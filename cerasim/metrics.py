@@ -69,7 +69,7 @@ class MetricsCollector:
             total_rej = sum(b.reject_units  for b in batches)
             total_ok  = total_a + total_b
             k["total_production_units"] = total_ok
-            k["avg_daily_m2"]        = total_ok / sim_days
+            k["avg_daily_units"]        = total_ok / sim_days
             k["grade_a_units"]          = total_a
             k["grade_b_units"]          = total_b
             k["reject_units"]           = total_rej
@@ -77,7 +77,7 @@ class MetricsCollector:
             cts = [b.cycle_time_hr for b in batches if b.cycle_time_hr is not None]
             k["avg_cycle_time_hr"]   = sum(cts) / len(cts) if cts else 0.0
         else:
-            for key in ("total_production_units", "avg_daily_m2", "grade_a_units",
+            for key in ("total_production_units", "avg_daily_units", "grade_a_units",
                         "grade_b_units", "reject_units", "total_batches", "avg_cycle_time_hr"):
                 k[key] = 0.0
 
@@ -96,8 +96,8 @@ class MetricsCollector:
             overdue  = [o for o in complete if o.is_overdue]
 
             k["total_orders"]        = len(orders)
-            k["total_ordered_m2"]    = tot_ord
-            k["total_fulfilled_m2"]  = tot_ful
+            k["total_ordered_units"]    = tot_ord
+            k["total_fulfilled_units"]  = tot_ful
             k["fill_rate_pct"]       = (tot_ful / tot_ord * 100) if tot_ord else 0.0
             k["complete_pct"]        = (len(complete) / len(orders) * 100)
             k["otd_rate_pct"]        = ((1 - len(overdue) / len(complete)) * 100
@@ -109,7 +109,7 @@ class MetricsCollector:
                    for o in orders if o.fulfilled_at is not None]
             k["avg_lead_time_days"]  = sum(lts) / len(lts) if lts else 0.0
         else:
-            for key in ("total_orders", "total_ordered_m2", "total_fulfilled_m2",
+            for key in ("total_orders", "total_ordered_units", "total_fulfilled_units",
                         "fill_rate_pct", "complete_pct", "otd_rate_pct",
                         "stockout_events", "partial_fulfils", "avg_lead_time_days"):
                 k[key] = 0.0
