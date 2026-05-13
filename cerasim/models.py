@@ -102,3 +102,18 @@ class SupplierDelivery:
     @property
     def lead_time_hr(self) -> float:
         return self.delivered_at - self.ordered_at
+
+
+@dataclass
+class BreakdownEvent:
+    """A machine failure and subsequent repair."""
+
+    machine_id:      str   = ""
+    machine_name:    str   = ""
+    occurred_at:     float = 0.0    # simulation time when failure occurred
+    repair_duration: float = 0.0    # hours until back online
+    repair_cost_eur: float = 2_500.0
+
+    @property
+    def resolved_at(self) -> float:
+        return self.occurred_at + self.repair_duration
