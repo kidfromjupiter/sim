@@ -522,12 +522,39 @@ class CeramicFactory:
     # =========================================================================
 
     def daily_recorder(self):
-        while False:
-            yield self.env.timeout(0)
+        """
+        Snapshots key system state once per simulated day for trend charts.
+        """
+        while True:
+            yield self.env.timeout(HOURS_PER_DAY)
+            day = int(self.env.now / HOURS_PER_DAY)
+
+            self.metrics.daily_snapshots.append({
+                "day":           day,
+                "raw_mat":       {m: self.raw_mat[m].level for m in SUPPLIERS},
+                "slip":          self.slip_buffer.level,
+                "fg":            {p: self.fg[p].level for p in PRODUCTS},
+                "produced_units": dict(self._daily_prod),
+                "wip":           (len(self.cast_store.items)
+                                  + len(self.demolded_store.items)
+                                  + len(self.fettled_store.items)
+                                  + len(self.glazed_store.items)
+                                  + len(self.fired_store.items)),
+                "utilization":   self._current_utilization(),
+            })
+            self._daily_prod = {p: 0 for p in PRODUCTS}
 
     def _current_utilization(self) -> Dict[str, float]:
-        return {}
+        """Cumulative utilisation fraction for each machine group."""
+        util = {}
+        for key, res in self.machines.items():
+            denom = res.capacity * self.env.now
+            util[key] = (
+                min(1.0, self._machine_busy_hr[key] / denom) if denom > 0 else 0.0
+            )
+        return util
 
+    # =========================================================================
     # Bootstrap
     # =========================================================================
 
