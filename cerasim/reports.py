@@ -375,4 +375,54 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
 
 
 def plot_comparison_chart(results: Dict[str, Tuple], out_dir: str) -> str:
-    return ""
+    """
+    Side-by-side bar chart comparing the 4 scenarios on 6 key KPIs.
+    Returns the saved file path.
+    """
+    scen_ids  = list(results.keys())
+    labels    = [SCENARIOS[s]["label"] for s in scen_ids]
+    colors    = [SCENARIO_COLORS[s] for s in scen_ids]
+
+    metrics_to_compare = [
+        ("avg_daily_m2",        "Avg Daily Production\n(units/day)",     None),
+        ("fill_rate_pct",       "Order Fill Rate\n(%)",               95),
+        ("otd_rate_pct",        "On-Time Delivery\n(%)",              95),
+        ("total_breakdowns",    "Machine\nBreakdowns",                None),
+        ("net_profit_eur",      "Net Profit (€)",                     None),
+        ("stockout_events",     "Stockout Events",                    None),
+    ]
+
+    fig, axes = plt.subplots(2, 3, figsize=(14, 7))
+    fig.suptitle(
+        f"{FACTORY_NAME}  ·  90-Day Scenario Comparison",
+        fontsize=12, fontweight="bold",
+    )
+    plt.subplots_adjust(hspace=0.55, wspace=0.40)
+
+    for idx, (key, title, target) in enumerate(metrics_to_compare):
+        ax   = axes[idx // 3][idx % 3]
+        vals = [results[s][1].get(key, 0) for s in scen_ids]
+        bars = ax.bar(labels, vals, color=colors, alpha=0.85, edgecolor="white")
+
+        if target is not None:
+            ax.axhline(target, color="red", linewidth=1.0,
+                       linestyle="--", alpha=0.7, label=f"Target {target}")
+            ax.legend(fontsize=6)
+
+        for bar, v in zip(bars, vals):
+            fmt = f"{v:,.0f}" if abs(v) >= 100 else f"{v:.1f}"
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() * 1.01,
+                fmt, ha="center", va="bottom", fontsize=7,
+            )
+
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, fontsize=7, rotation=15, ha="right")
+        _style_ax(ax, title)
+
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "scenario_comparison.png")
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    return path
