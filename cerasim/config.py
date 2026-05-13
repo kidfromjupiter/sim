@@ -152,3 +152,83 @@ MACHINES = {
         "capex_eur":    250_000,
     },
 }
+
+# ── Raw-material suppliers ────────────────────────────────────────────────────
+# delivery_qty_t     : tonnes per triggered delivery
+# lead_time_mean_hr  : average hours from order to gate arrival
+# reliability        : probability the delivery is on-time (vs. delayed)
+# reorder_point_t    : trigger a replenishment order when stock falls below this
+SUPPLIERS = {
+    "clay": {
+        "name":               "ClayMin Lda",
+        "country":            "Portugal",
+        "delivery_qty_t":     50.0,
+        "lead_time_mean_hr":  36,
+        "lead_time_std_hr":    6,
+        "reliability":        0.92,
+        "unit_cost_eur_t":    85,
+        "reorder_point_t":    65,
+        "max_stock_t":        260,
+    },
+    "feldspar": {
+        "name":               "FeldsparCo S.L.",
+        "country":            "Spain",
+        "delivery_qty_t":     30.0,
+        "lead_time_mean_hr":  42,
+        "lead_time_std_hr":    8,
+        "reliability":        0.88,
+        "unit_cost_eur_t":    120,
+        "reorder_point_t":    40,
+        "max_stock_t":        150,
+    },
+    "silica": {
+        "name":               "SilicaTech Lda",
+        "country":            "Portugal",
+        "delivery_qty_t":     25.0,
+        "lead_time_mean_hr":  36,
+        "lead_time_std_hr":    6,
+        "reliability":        0.91,
+        "unit_cost_eur_t":    95,
+        "reorder_point_t":    32,
+        "max_stock_t":        120,
+    },
+    "kaolin": {
+        "name":               "KaolinMine S.A.",
+        "country":            "Brazil",           # Overseas → long lead time
+        "delivery_qty_t":     20.0,
+        "lead_time_mean_hr":  72,
+        "lead_time_std_hr":   16,
+        "reliability":        0.82,               # Less reliable — distant supplier
+        "unit_cost_eur_t":    110,
+        "reorder_point_t":    22,
+        "max_stock_t":        100,
+    },
+    "glaze": {
+        "name":               "ChemGlaze GmbH",
+        "country":            "Germany",
+        "delivery_qty_t":     12.0,
+        "lead_time_mean_hr":  72,
+        "lead_time_std_hr":   14,
+        "reliability":        0.85,
+        "unit_cost_eur_t":    280,
+        "reorder_point_t":    10,
+        "max_stock_t":        55,
+    },
+}
+
+# Initial raw-material inventory (tonnes) — approx 3 days of production supply
+INITIAL_INVENTORY = {
+    "clay":     90.0,
+    "feldspar": 50.0,
+    "silica":   40.0,
+    "kaolin":   25.0,
+    "glaze":    10.0,
+}
+
+# ── Finished-goods warehouse ──────────────────────────────────────────────────
+FG_INITIAL_UNITS = {
+    "ONE-PIECE-STD":  200,
+    "TWO-PIECE-ECO":  150,
+    "WALL-HUNG-PREM": 100,
+}
+FG_MAX_UNITS = {k: 5_000 for k in PRODUCTS}
