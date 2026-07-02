@@ -2,3 +2,6 @@ matplotlib>=3.8
 numpy>=1.26
 rich>=13.7
 simpy>=4.1
+streamlit>=1.30
+pandas>=2.0
+fpdf2>=2.7
