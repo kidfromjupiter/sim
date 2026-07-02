@@ -9,7 +9,7 @@ SIM_DURATION  = SIM_DAYS * HOURS_PER_DAY   # 2 160 h
 BATCH_SIZE_UNITS = 50   # units per production batch — fundamental granule of the sim
 
 # ── Factory metadata ──────────────────────────────────────────────────────────
-FACTORY_NAME     = "SaniCer Sanitary Ware Industries"
+FACTORY_NAME     = "CeraSim"
 FACTORY_LOCATION = "Aveiro, Portugal"
 FACTORY_FOUNDED  = 1987
 FACTORY_EMPLOYEES = 240

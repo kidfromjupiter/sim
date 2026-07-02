@@ -5,7 +5,7 @@ import pandas as pd
 from main import run_scenario, REPORT_DIR
 from cerasim.config import SCENARIOS, SIM_DAYS
 from cerasim.reports import plot_scenario_dashboard, plot_comparison_chart
-from cerasim.outputs import generate_pdf_report, generate_csv_report
+from cerasim.outputs import generate_csv_report
 
 STATE_FILE = "cerasim_state.json"
 
@@ -18,6 +18,11 @@ LIGHT_THEME_CSS = """
     .stApp {
         background-color: #f8f9fa;
         color: #1a1a2e;
+    }
+
+    /* Header */
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
     }
 
     /* Sidebar */
@@ -214,7 +219,8 @@ def main():
         to_run = scenario_options if selected_scenario == "All" else [selected_scenario]
         st.session_state.results = {}
         
-        st.write("Running simulation(s)...")
+        status_text = st.empty()
+        status_text.write("Running simulation(s)...")
         progress_bar = st.progress(0.0)
         
         total_days = SIM_DAYS * len(to_run)
@@ -248,6 +254,7 @@ def main():
                 st.session_state.comp_path = None
                 
         progress_bar.empty()
+        status_text.empty()
         st.success(f"Simulation of {total_days} factory-days complete!")
 
         # Persist results to disk
@@ -273,22 +280,13 @@ def main():
         df_comp = pd.DataFrame(comp_data)
         
         # 2. One-Click Data Export
-        col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+        col1, col2 = st.columns([0.8, 0.2])
         col1.dataframe(df_comp, use_container_width=True, hide_index=True)
         col2.download_button(
             label="📥 Download CSV",
             data=generate_csv_report(df_comp),
             file_name='cerasim_kpis.csv',
             mime='text/csv',
-            use_container_width=True
-        )
-        
-        pdf_bytes = generate_pdf_report(st.session_state.results, df_comp, st.session_state.comp_path)
-        col3.download_button(
-            label="📄 Download PDF",
-            data=pdf_bytes,
-            file_name='cerasim_report.pdf',
-            mime='application/pdf',
             use_container_width=True
         )
             
