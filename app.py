@@ -4,6 +4,7 @@ import pandas as pd
 from main import run_scenario, REPORT_DIR
 from cerasim.config import SCENARIOS, SIM_DAYS
 from cerasim.reports import plot_scenario_dashboard, plot_comparison_chart
+from cerasim.outputs import generate_pdf_report, generate_csv_report
 
 st.set_page_config(page_title="CeraSim Dashboard", layout="wide")
 
@@ -42,7 +43,7 @@ def get_cached_simulation(sid, seed, demand_factor, mach_rel_factor, supp_rel_fa
     return factory, kpis, chart_path
 
 def main():
-    st.title("🏭 SaniCer Supply Chain Simulator")
+    st.title("🏭 Supply Chain Simulator")
 
     # Keep track of whether we need to force a run visually
     if "results" not in st.session_state:
@@ -137,13 +138,22 @@ def main():
         df_comp = pd.DataFrame(comp_data)
         
         # 2. One-Click Data Export
-        col1, col2 = st.columns([0.8, 0.2])
+        col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
         col1.dataframe(df_comp, use_container_width=True, hide_index=True)
         col2.download_button(
             label="📥 Download CSV",
-            data=df_comp.to_csv(index=False).encode('utf-8'),
+            data=generate_csv_report(df_comp),
             file_name='cerasim_kpis.csv',
             mime='text/csv',
+            use_container_width=True
+        )
+        
+        pdf_bytes = generate_pdf_report(st.session_state.results, df_comp, st.session_state.comp_path)
+        col3.download_button(
+            label="📄 Download PDF",
+            data=pdf_bytes,
+            file_name='cerasim_report.pdf',
+            mime='application/pdf',
             use_container_width=True
         )
             
