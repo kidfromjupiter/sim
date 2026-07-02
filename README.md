@@ -25,7 +25,33 @@ CeraSim is a discrete-event simulation model for SaniCer Sanitary Ware Industrie
 
 1. Ensure you have Python installed on your system.
 2. Clone or download this repository.
-3. Install the required dependencies using pip:
+3. Create a Python virtual environment:
+
+   On Windows:
+   ```powershell
+   python -m venv .venv
+   ```
+   On macOS/Linux:
+   ```bash
+   python3 -m venv .venv
+   ```
+
+4. Activate the virtual environment:
+
+   On Windows (PowerShell):
+   ```powershell
+   .venv\Scripts\Activate.ps1
+   ```
+   On Windows (CMD):
+   ```cmd
+   .venv\Scripts\activate.bat
+   ```
+   On macOS/Linux:
+   ```bash
+   source .venv/bin/activate
+   ```
+
+5. Install the required dependencies using pip:
 
 ```bash
 pip install -r requirements.txt
@@ -53,6 +79,14 @@ python main.py --seed 99
 Run the simulation without generating matplotlib charts:
 ```bash
 python main.py --no-charts
+```
+
+### Streamlit Web App Interface
+
+You can also launch an interactive browser-based web dashboard using Streamlit:
+
+```bash
+streamlit run app.py
 ```
 
 ## Simulation Architecture

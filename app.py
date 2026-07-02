@@ -19,30 +19,67 @@ class GlobalStreamlitProgress:
         # Update streamlit progress bar safely (0.0 to 1.0)
         self.st_bar.progress(min(self.current / max(1, self.total_steps), 1.0))
 
+# 3. Caching: Use cache_resource to keep the factory objects in memory without serializing
+@st.cache_resource(show_spinner=False)
+def get_cached_simulation(sid, seed, demand_factor, mach_rel_factor, supp_rel_factor, extra_kilns, safety_factor):
+    # Patch config dynamically for this run
+    original_config = SCENARIOS[sid].copy()
+    
+    SCENARIOS[sid]["demand_factor"] = demand_factor
+    SCENARIOS[sid]["machine_reliability_factor"] = mach_rel_factor
+    SCENARIOS[sid]["supplier_reliability_factor"] = supp_rel_factor
+    SCENARIOS[sid]["extra_kilns"] = extra_kilns
+    SCENARIOS[sid]["safety_stock_factor"] = safety_factor
+    
+    factory, kpis = run_scenario(sid, seed=seed, progress=None, task_id=sid)
+    
+    # Generate chart immediately so we cache its path too
+    chart_path = plot_scenario_dashboard(factory, kpis, sid, REPORT_DIR)
+    
+    # Restore original config just in case
+    SCENARIOS[sid].update(original_config)
+    
+    return factory, kpis, chart_path
+
 def main():
     st.title("🏭 SaniCer Supply Chain Simulator")
+
+    # Keep track of whether we need to force a run visually
+    if "results" not in st.session_state:
+        st.session_state.results = {}
+        st.session_state.comp_path = None
 
     with st.sidebar:
         st.header("Simulation Settings")
         scenario_options = list(SCENARIOS.keys())
         # Provide user friendly labels for scenarios in selectbox
         selected_label = st.selectbox(
-            "Select Scenario", 
+            "Select Scenario Preset", 
             ["All Scenarios"] + [SCENARIOS[k]["label"] for k in scenario_options]
         )
         
-        # Map back to scenario ID
         if selected_label == "All Scenarios":
             selected_scenario = "All"
+            st.info("Custom sliders are disabled when running 'All Scenarios'. Presets will be used.")
+            demand_val, mach_val, supp_val, kilns_val, safety_val = 1.0, 1.0, 1.0, 0, 1.0
         else:
             selected_scenario = next(k for k in scenario_options if SCENARIOS[k]["label"] == selected_label)
+            preset = SCENARIOS[selected_scenario]
+            
+            st.subheader("⚙️ Custom Parameters")
+            # 1. Dynamic Parameter Sliders
+            demand_val = st.slider("Demand Factor", 0.5, 2.0, float(preset["demand_factor"]), 0.1)
+            mach_val = st.slider("Machine Reliability", 0.5, 1.5, float(preset["machine_reliability_factor"]), 0.1)
+            supp_val = st.slider("Supplier Reliability", 0.5, 1.5, float(preset["supplier_reliability_factor"]), 0.1)
+            kilns_val = st.number_input("Extra Kilns", 0, 3, int(preset["extra_kilns"]), 1)
+            safety_val = st.slider("Safety Stock Factor", 0.5, 3.0, float(preset["safety_stock_factor"]), 0.1)
             
         seed = st.number_input("Random Seed", value=42, step=1)
         run_btn = st.button("Run Simulation", type="primary")
 
     if run_btn:
         to_run = scenario_options if selected_scenario == "All" else [selected_scenario]
-        results = {}
+        st.session_state.results = {}
         
         st.write("Running simulation(s)...")
         progress_bar = st.progress(0.0)
@@ -50,49 +87,72 @@ def main():
         total_days = SIM_DAYS * len(to_run)
         st_prog = GlobalStreamlitProgress(progress_bar, total_days)
 
-        for sid in to_run:
-            with st.spinner(f"Simulating {SCENARIOS[sid]['label']}..."):
-                factory, kpis = run_scenario(sid, seed=seed, progress=st_prog, task_id=sid)
-                results[sid] = (factory, kpis)
+        with st.spinner("Processing..."):
+            for sid in to_run:
+                # If running all, use their default presets instead of sliders
+                if selected_scenario == "All":
+                    df, mrf, srf, ek, ssf = (
+                        SCENARIOS[sid]["demand_factor"],
+                        SCENARIOS[sid]["machine_reliability_factor"],
+                        SCENARIOS[sid]["supplier_reliability_factor"],
+                        SCENARIOS[sid]["extra_kilns"],
+                        SCENARIOS[sid]["safety_stock_factor"]
+                    )
+                else:
+                    df, mrf, srf, ek, ssf = demand_val, mach_val, supp_val, kilns_val, safety_val
+
+                # Using cache_resource bypasses execution if parameters are the same!
+                factory, kpis, chart_path = get_cached_simulation(
+                    sid, seed, df, mrf, srf, ek, ssf
+                )
+                # Just update progress bar artificially since it's cached
+                st_prog.advance(sid, SIM_DAYS)
+                st.session_state.results[sid] = (factory, kpis, chart_path)
+                
+            if len(st.session_state.results) > 1:
+                st.session_state.comp_path = plot_comparison_chart(st.session_state.results, REPORT_DIR)
+            else:
+                st.session_state.comp_path = None
                 
         progress_bar.empty()
         st.success(f"Simulation of {total_days} factory-days complete!")
-        
-        # Generate Charts
-        with st.spinner("Generating dashboard charts..."):
-            saved_paths = {}
-            for sid, (factory, kpis) in results.items():
-                path = plot_scenario_dashboard(factory, kpis, sid, REPORT_DIR)
-                saved_paths[sid] = path
-                
-            comp_path = None
-            if len(results) > 1:
-                comp_path = plot_comparison_chart(results, REPORT_DIR)
-                
-        # Display Results
+
+    # Display Results if we have them
+    if st.session_state.results:
         st.header("📊 Key Performance Indicators")
         
-        if len(results) > 1:
-            st.subheader("Scenario Comparison")
-            # Build a dataframe for comparison
-            comp_data = []
-            for sid, (_, kpis) in results.items():
-                comp_data.append({
-                    "Scenario": SCENARIOS[sid]["label"],
-                    "Output (units)": f"{kpis['total_production_units']:,.0f}",
-                    "Fill Rate": f"{kpis['fill_rate_pct']:.1f}%",
-                    "On-Time Delivery": f"{kpis['otd_rate_pct']:.1f}%",
-                    "Breakdowns": kpis["total_breakdowns"],
-                    "Revenue": f"€{kpis['revenue_eur']:,.0f}",
-                    "Net Profit": f"€{kpis['net_profit_eur']:,.0f}",
-                    "Net Margin": f"{kpis['net_margin_pct']:.1f}%"
-                })
-            st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
+        comp_data = []
+        for sid, (_, kpis, _) in st.session_state.results.items():
+            comp_data.append({
+                "Scenario": SCENARIOS[sid]["label"],
+                "Output (units)": f"{kpis['total_production_units']:,.0f}",
+                "Fill Rate": f"{kpis['fill_rate_pct']:.1f}%",
+                "On-Time Delivery": f"{kpis['otd_rate_pct']:.1f}%",
+                "Breakdowns": kpis["total_breakdowns"],
+                "Revenue": f"€{kpis['revenue_eur']:,.0f}",
+                "Net Profit": f"€{kpis['net_profit_eur']:,.0f}",
+                "Net Margin": f"{kpis['net_margin_pct']:.1f}%"
+            })
             
-            if comp_path and os.path.exists(comp_path):
-                st.image(comp_path, caption="90-Day Scenario Comparison", use_container_width=True)
+        df_comp = pd.DataFrame(comp_data)
+        
+        # 2. One-Click Data Export
+        col1, col2 = st.columns([0.8, 0.2])
+        col1.dataframe(df_comp, use_container_width=True, hide_index=True)
+        col2.download_button(
+            label="📥 Download CSV",
+            data=df_comp.to_csv(index=False).encode('utf-8'),
+            file_name='cerasim_kpis.csv',
+            mime='text/csv',
+            use_container_width=True
+        )
+            
+        if len(st.session_state.results) > 1 and st.session_state.comp_path:
+            st.subheader("Scenario Comparison")
+            if os.path.exists(st.session_state.comp_path):
+                st.image(st.session_state.comp_path, caption="90-Day Scenario Comparison", use_container_width=True)
 
-        for sid, (_, kpis) in results.items():
+        for sid, (_, kpis, chart_path) in st.session_state.results.items():
             st.divider()
             st.subheader(f"{SCENARIOS[sid]['label']}")
             st.caption(f"{SCENARIOS[sid]['description']}")
@@ -105,8 +165,8 @@ def main():
             col4.metric("Net Profit", f"€{kpis['net_profit_eur']:,.0f}")
             
             # Load the generated matplotlib dashboard
-            if sid in saved_paths and os.path.exists(saved_paths[sid]):
-                st.image(saved_paths[sid], use_container_width=True)
+            if chart_path and os.path.exists(chart_path):
+                st.image(chart_path, use_container_width=True)
 
 if __name__ == "__main__":
     main()
