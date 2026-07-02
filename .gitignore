@@ -13,6 +13,7 @@ env/
 
 # Generated simulation output
 reports/*.png
+cerasim_state.json
 
 # Assignment and generated documentation artifacts
 assignment_ooad/

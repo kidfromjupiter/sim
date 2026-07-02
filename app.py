@@ -1,4 +1,5 @@
 import os
+import json
 import streamlit as st
 import pandas as pd
 from main import run_scenario, REPORT_DIR
@@ -6,7 +7,94 @@ from cerasim.config import SCENARIOS, SIM_DAYS
 from cerasim.reports import plot_scenario_dashboard, plot_comparison_chart
 from cerasim.outputs import generate_pdf_report, generate_csv_report
 
+STATE_FILE = "cerasim_state.json"
+
 st.set_page_config(page_title="CeraSim Dashboard", layout="wide")
+
+# ── Light Theme CSS ──────────────────────────────────────────────────────────
+LIGHT_THEME_CSS = """
+<style>
+    /* Main background */
+    .stApp {
+        background-color: #f8f9fa;
+        color: #1a1a2e;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #e0e0e0;
+    }
+    section[data-testid="stSidebar"] .stMarkdown,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] span {
+        color: #1a1a2e !important;
+    }
+
+    /* Headers */
+    h1, h2, h3, h4, h5, h6, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+        color: #16213e !important;
+    }
+
+    /* Metric cards */
+    div[data-testid="stMetric"] {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+    div[data-testid="stMetric"] label {
+        color: #555555 !important;
+    }
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+        color: #16213e !important;
+    }
+
+    /* Buttons */
+    .stButton > button {
+        background-color: #2E86AB;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    .stButton > button:hover {
+        background-color: #1a6b8a;
+        box-shadow: 0 4px 12px rgba(46, 134, 171, 0.3);
+        transform: translateY(-1px);
+    }
+    .stDownloadButton > button {
+        background-color: #ffffff;
+        color: #2E86AB;
+        border: 1.5px solid #2E86AB;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    .stDownloadButton > button:hover {
+        background-color: #2E86AB;
+        color: #ffffff;
+    }
+
+    /* Dataframe */
+    .stDataFrame {
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    /* Divider */
+    hr {
+        border-color: #e0e0e0 !important;
+    }
+
+    /* Info / Success boxes */
+    div[data-testid="stAlert"] {
+        border-radius: 8px;
+    }
+</style>
+"""
+st.markdown(LIGHT_THEME_CSS, unsafe_allow_html=True)
+
 
 class GlobalStreamlitProgress:
     """A minimal adapter to replace Rich's Progress bar with Streamlit's."""
@@ -20,7 +108,47 @@ class GlobalStreamlitProgress:
         # Update streamlit progress bar safely (0.0 to 1.0)
         self.st_bar.progress(min(self.current / max(1, self.total_steps), 1.0))
 
-# 3. Caching: Use cache_resource to keep the factory objects in memory without serializing
+
+# ── State Persistence ────────────────────────────────────────────────────────
+
+def save_state(results, comp_path):
+    """Persist KPIs and chart paths to disk so they survive a browser refresh."""
+    data = {
+        "comp_path": comp_path,
+        "scenarios": {}
+    }
+    for sid, (factory, kpis, chart_path) in results.items():
+        data["scenarios"][sid] = {
+            "kpis": kpis,
+            "chart_path": chart_path,
+        }
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(data, f, default=str)
+    except (OSError, TypeError):
+        pass  # Non-critical — if save fails, user just loses state on refresh
+
+
+def load_state():
+    """Restore the last simulation results from disk if available."""
+    if not os.path.exists(STATE_FILE):
+        return None, None
+    try:
+        with open(STATE_FILE, "r") as f:
+            data = json.load(f)
+        results = {}
+        for sid, entry in data.get("scenarios", {}).items():
+            # Store (None, kpis, chart_path) — factory object can't be serialized,
+            # but we only need kpis and chart_path for display purposes
+            results[sid] = (None, entry["kpis"], entry.get("chart_path"))
+        return results, data.get("comp_path")
+    except (OSError, json.JSONDecodeError, KeyError):
+        return None, None
+
+
+# ── Simulation Cache ─────────────────────────────────────────────────────────
+
+# Caching: Use cache_resource to keep the factory objects in memory without serializing
 @st.cache_resource(show_spinner=False)
 def get_cached_simulation(sid, seed, demand_factor, mach_rel_factor, supp_rel_factor, extra_kilns, safety_factor):
     # Patch config dynamically for this run
@@ -42,13 +170,17 @@ def get_cached_simulation(sid, seed, demand_factor, mach_rel_factor, supp_rel_fa
     
     return factory, kpis, chart_path
 
+
+# ── Main App ─────────────────────────────────────────────────────────────────
+
 def main():
     st.title("🏭 Supply Chain Simulator")
 
-    # Keep track of whether we need to force a run visually
+    # Initialise session state, restoring from disk if available
     if "results" not in st.session_state:
-        st.session_state.results = {}
-        st.session_state.comp_path = None
+        saved_results, saved_comp = load_state()
+        st.session_state.results = saved_results if saved_results else {}
+        st.session_state.comp_path = saved_comp
 
     with st.sidebar:
         st.header("Simulation Settings")
@@ -117,6 +249,9 @@ def main():
                 
         progress_bar.empty()
         st.success(f"Simulation of {total_days} factory-days complete!")
+
+        # Persist results to disk
+        save_state(st.session_state.results, st.session_state.comp_path)
 
     # Display Results if we have them
     if st.session_state.results:
