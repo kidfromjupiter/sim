@@ -1,4 +1,4 @@
-# CeraSim - SaniCer Sanitary Ware Industries Supply Chain Simulator
+# CeraSim - Sanitary Ware Industries Supply Chain Simulator
 
 CeraSim is a discrete-event simulation model for SaniCer Sanitary Ware Industries, built using Python and SimPy. It is designed to model the end-to-end supply chain of a sanitary ware factory, helping stakeholders analyze production bottlenecks, evaluate system resilience, and test various capacity planning scenarios.
 
