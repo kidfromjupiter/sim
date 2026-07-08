@@ -229,7 +229,7 @@ def _style_ax(ax, title):
     ax.grid(axis="y", alpha=0.3)
 
 
-def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str) -> str:
+def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str, suffix: str = "") -> str:
     """
     Generate a 3×2 matplotlib dashboard for a single scenario.
     Returns the saved file path.
@@ -382,7 +382,8 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
     _style_ax(ax, "Cumulative Revenue vs. Raw Material Cost")
 
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, f"dashboard_{scenario_id}.png")
+    filename = f"dashboard_{scenario_id}_{suffix}.png" if suffix else f"dashboard_{scenario_id}.png"
+    path = os.path.join(out_dir, filename)
     fig.savefig(path, dpi=130, bbox_inches="tight")
     plt.close(fig)
     return path
