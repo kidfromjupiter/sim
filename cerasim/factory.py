@@ -105,7 +105,7 @@ class CeramicFactory:
         self.order_queue = simpy.Store(env)
 
         # ── Metrics ───────────────────────────────────────────────────────────
-        self.metrics = MetricsCollector(env)
+        self.metrics = MetricsCollector(env, scenario)
 
         # ── Internal state ────────────────────────────────────────────────────
         self._pending_replen: Dict[str, int] = {m: 0 for m in SUPPLIERS}
