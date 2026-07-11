@@ -154,6 +154,8 @@ def load_state():
 # ── Simulation Cache ─────────────────────────────────────────────────────────
 
 # Caching: Use cache_resource to keep the factory objects in memory without serializing
+import hashlib
+
 @st.cache_resource(show_spinner=False)
 def get_cached_simulation(sid, seed, demand_factor, mach_rel_factor, supp_rel_factor, extra_kilns, safety_factor):
     # Patch config dynamically for this run
@@ -167,8 +169,12 @@ def get_cached_simulation(sid, seed, demand_factor, mach_rel_factor, supp_rel_fa
     
     factory, kpis = run_scenario(sid, seed=seed, progress=None, task_id=sid)
     
+    # Generate unique hash for these parameters so images don't overwrite each other
+    params_str = f"{sid}_{seed}_{demand_factor}_{mach_rel_factor}_{supp_rel_factor}_{extra_kilns}_{safety_factor}"
+    param_hash = hashlib.md5(params_str.encode()).hexdigest()[:8]
+    
     # Generate chart immediately so we cache its path too
-    chart_path = plot_scenario_dashboard(factory, kpis, sid, REPORT_DIR)
+    chart_path = plot_scenario_dashboard(factory, kpis, sid, REPORT_DIR, suffix=param_hash)
     
     # Restore original config just in case
     SCENARIOS[sid].update(original_config)

@@ -4,22 +4,22 @@ CeraSim is a discrete-event simulation model for SaniCer Sanitary Ware Industrie
 
 ## Key Features
 
-* End-to-end supply chain simulation from raw material procurement to finished goods fulfillment.
-* Terminal-based UI for real-time progress tracking and Key Performance Indicator (KPI) display.
-* Automated generation of Matplotlib dashboards for visualizing metrics.
-* Configurable, built-in scenarios for testing resilience and capacity constraints.
+- End-to-end supply chain simulation from raw material procurement to finished goods fulfillment.
+- Terminal-based UI for real-time progress tracking and Key Performance Indicator (KPI) display.
+- Automated generation of Matplotlib dashboards for visualizing metrics.
+- Configurable, built-in scenarios for testing resilience and capacity constraints.
 
 ## File and Folder Structure
 
-* `main.py`: The main entry point for running the simulation, executing scenarios, and generating reports.
-* `requirements.txt`: Contains the list of Python package dependencies required to run the project.
-* `cerasim/`: The core Python package containing the simulation logic.
-  * `__init__.py`: Package initialization file.
-  * `config.py`: Defines simulation parameters, machine capacities, raw material properties, and scenario definitions.
-  * `factory.py`: Contains the `CeramicFactory` class that sets up the SimPy environment, production processes, and resources.
-  * `metrics.py`: Responsible for computing KPIs such as fill rates, bottlenecks, and total production units.
-  * `models.py`: Defines the data structures representing physical and logical entities (e.g., batches, customer orders, supplier deliveries).
-  * `reports.py`: Handles terminal output tables and the generation of Matplotlib visualizations.
+- `main.py`: The main entry point for running the simulation, executing scenarios, and generating reports.
+- `requirements.txt`: Contains the list of Python package dependencies required to run the project.
+- `cerasim/`: The core Python package containing the simulation logic.
+  - `__init__.py`: Package initialization file.
+  - `config.py`: Defines simulation parameters, machine capacities, raw material properties, and scenario definitions.
+  - `factory.py`: Contains the `CeramicFactory` class that sets up the SimPy environment, production processes, and resources.
+  - `metrics.py`: Responsible for computing KPIs such as fill rates, bottlenecks, and total production units.
+  - `models.py`: Defines the data structures representing physical and logical entities (e.g., batches, customer orders, supplier deliveries).
+  - `reports.py`: Handles terminal output tables and the generation of Matplotlib visualizations.
 
 ## Installation and Setup
 
@@ -28,10 +28,13 @@ CeraSim is a discrete-event simulation model for SaniCer Sanitary Ware Industrie
 3. Create a Python virtual environment:
 
    On Windows:
+
    ```powershell
    python -m venv .venv
    ```
+
    On macOS/Linux:
+
    ```bash
    python3 -m venv .venv
    ```
@@ -39,14 +42,19 @@ CeraSim is a discrete-event simulation model for SaniCer Sanitary Ware Industrie
 4. Activate the virtual environment:
 
    On Windows (PowerShell):
+
    ```powershell
    .venv\Scripts\Activate.ps1
    ```
+
    On Windows (CMD):
+
    ```cmd
    .venv\Scripts\activate.bat
    ```
+
    On macOS/Linux:
+
    ```bash
    source .venv/bin/activate
    ```
@@ -62,21 +70,25 @@ pip install -r requirements.txt
 The simulation is executed via the `main.py` script. You can run it with different arguments to control its behavior:
 
 Run all predefined scenarios:
+
 ```bash
 python main.py
 ```
 
 Run a specific scenario (e.g., the baseline scenario):
+
 ```bash
 python main.py --scenario baseline
 ```
 
 Run with a specific random seed for reproducibility:
+
 ```bash
 python main.py --seed 99
 ```
 
 Run the simulation without generating matplotlib charts:
+
 ```bash
 python main.py --no-charts
 ```
@@ -115,14 +127,15 @@ The simulator comes with four pre-configured scenarios defined in `config.py`:
 ## Outputs and Reporting
 
 Upon completion of a simulation run, the system provides:
-* Detailed, terminal-based KPI tables for each scenario.
-* A cross-scenario comparison table summarizing key metrics.
-* Generated visualization dashboards (saved as `.png` files) located in the `reports/` directory.
+
+- Detailed, terminal-based KPI tables for each scenario.
+- A cross-scenario comparison table summarizing key metrics.
+- Generated visualization dashboards (saved as `.png` files) located in the `reports/` directory.
 
 ## Collaborators
 
-* Lasan MahaLiyana
-* Oshada Jayasinghe
-* Sithuka Jayawardena
-* Ranuja Jayawardena
-* Sithum Fernando
+- Lasan MahaLiyana
+- Oshada Jayasinghe
+- Sithuka Jayawardhana
+- Ranuja Jayawardena
+- Sithum Fernando

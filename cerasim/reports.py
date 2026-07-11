@@ -20,7 +20,7 @@ from rich.text import Text
 
 from .config import (
     FACTORY_EMPLOYEES, FACTORY_FOUNDED, FACTORY_LOCATION, FACTORY_NAME,
-    MACHINES, PRODUCTS, SCENARIOS, SUPPLIERS, SIM_DAYS,
+    MACHINES, PRODUCTS, SCENARIOS, SUPPLIERS, SIM_DAYS, INITIAL_INVENTORY,
 )
 
 console = Console()
@@ -229,7 +229,7 @@ def _style_ax(ax, title):
     ax.grid(axis="y", alpha=0.3)
 
 
-def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str) -> str:
+def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str, suffix: str = "") -> str:
     """
     Generate a 3×2 matplotlib dashboard for a single scenario.
     Returns the saved file path.
@@ -253,10 +253,11 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
     # ── (0,0) Raw material inventory ──────────────────────────────────────
     ax = axes[0][0]
     mat_colors = ["#8B4513", "#DAA520", "#708090", "#4682B4", "#48A999"]
-    for mat, col in zip(mat_names, mat_colors):
+    for i, mat in enumerate(mat_names):
+        col = mat_colors[i % len(mat_colors)]
         vals = [s["raw_mat"][mat] for s in snaps]
         ax.plot(days, vals, label=mat.capitalize(), color=col, linewidth=1.4)
-        reorder = SUPPLIERS[mat]["reorder_point_t"]
+        reorder = SUPPLIERS[mat]["reorder_point_t"] * SCENARIOS[scenario_id]["safety_stock_factor"]
         ax.axhline(reorder, color=col, linewidth=0.6, linestyle="--", alpha=0.5)
 
     # Mark kaolin disruption
@@ -300,7 +301,8 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
     final_util = snaps[-1]["utilization"]
     mach_labels = [MACHINES[k]["name"].replace(" ", "\n") for k in MACHINES]
     util_vals   = [final_util.get(k, 0) * 100 for k in MACHINES]
-    bar_cols    = ["#2E86AB", "#A23B72", "#F18F01", "#E63946", "#2EC4B6"]
+    bar_cols    = ["#2E86AB", "#A23B72", "#F18F01", "#E63946", "#2EC4B6", "#8338EC", "#3A86FF"]
+    bar_cols    = [bar_cols[i % len(bar_cols)] for i in range(len(mach_labels))]
     bars = ax.barh(mach_labels, util_vals, color=bar_cols, alpha=0.85)
     ax.axvline(85, color="red", linewidth=1.0, linestyle="--", alpha=0.7, label="85 % threshold")
     ax.set_xlim(0, 105)
@@ -319,10 +321,13 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
         daily_ord  = np.zeros(SIM_DAYS + 1)
         daily_ful  = np.zeros(SIM_DAYS + 1)
         for o in orders:
-            d = int(o.created_at / 24)
-            if d <= SIM_DAYS:
-                daily_ord[d] += o.quantity_units
-                daily_ful[d] += o.fulfilled_qty
+            c_d = int(o.created_at / 24)
+            if c_d <= SIM_DAYS:
+                daily_ord[c_d] += o.quantity_units
+            
+            f_d = int((o.fulfilled_at or o.created_at) / 24)
+            if f_d <= SIM_DAYS:
+                daily_ful[f_d] += o.fulfilled_qty
 
         rolling_rate = []
         for i in range(len(daily_ord)):
@@ -331,7 +336,8 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
             rolling_rate.append(
                 (window_ful / window_ord * 100) if window_ord > 0 else 100.0
             )
-        ax.plot(range(len(rolling_rate)), rolling_rate,
+        days_x = [i + 1 for i in range(len(rolling_rate))]
+        ax.plot(days_x, rolling_rate,
                 color=SCENARIO_COLORS[scenario_id], linewidth=1.6)
         ax.axhline(95, color="green", linewidth=0.8, linestyle="--", alpha=0.6, label="95% target")
         ax.set_ylim(0, 105)
@@ -342,33 +348,42 @@ def plot_scenario_dashboard(factory, kpis: dict, scenario_id: str, out_dir: str)
 
     # ── (1,2) Cumulative revenue vs cost ───────────────────────────────────
     ax = axes[1][2]
-    batches = factory.metrics.completed_batches
-    if batches:
-        # Sort by finished_at
-        sorted_b = sorted(batches, key=lambda b: b.finished_at or 0)
-        times    = [(b.finished_at or 0) / 24 for b in sorted_b]
-        cum_rev  = np.cumsum([
-            b.grade_a_units * PRODUCTS[b.product]["price_eur_unit"] +
-            b.grade_b_units * PRODUCTS[b.product]["price_eur_unit"] * 0.65
-            for b in sorted_b
-        ])
-        # Approximate cumulative cost (raw mat only — for clarity)
-        cum_cost = np.cumsum([
-            b.quantity_units * 2.40   # approx €/units raw material (see config comments)
-            for b in sorted_b
-        ])
-        ax.fill_between(times, cum_rev / 1e6, cum_cost / 1e6,
-                        alpha=0.25, color="green", label="Gross profit")
-        ax.plot(times, cum_rev  / 1e6, color="#2EC4B6",  linewidth=1.5, label="Revenue")
-        ax.plot(times, cum_cost / 1e6, color="#E63946",  linewidth=1.5, linestyle="--",
-                label="Raw mat. cost")
-        ax.set_ylabel("€ millions", fontsize=8)
-        ax.set_xlabel("Day", fontsize=8)
-        ax.legend(fontsize=6)
+    cum_rev = []
+    cum_cost = []
+    
+    # Calculate initial cost correctly applying safety_stock_factor and max_stock_t
+    initial_cost = 0.0
+    for mat in SUPPLIERS:
+        init_qty = INITIAL_INVENTORY[mat] * SCENARIOS[scenario_id]["safety_stock_factor"]
+        init_qty = min(init_qty, SUPPLIERS[mat]["max_stock_t"])
+        initial_cost += init_qty * SUPPLIERS[mat]["unit_cost_eur_t"]
+    
+    for day in days:
+        hr_limit = day * 24
+        
+        # Revenue up to this day (based on order fulfillments)
+        rev = sum(o.revenue_eur for o in factory.metrics.orders 
+                  if o.fulfilled_at is not None and o.fulfilled_at <= hr_limit)
+        cum_rev.append(rev / 1e6)
+        
+        # Cost up to this day (initial + deliveries)
+        cost = initial_cost + sum(d.total_cost_eur for d in factory.metrics.deliveries 
+                                  if d.delivered_at <= hr_limit)
+        cum_cost.append(cost / 1e6)
+        
+    ax.fill_between(days, cum_rev, cum_cost,
+                    alpha=0.25, color="green", label="Gross profit")
+    ax.plot(days, cum_rev, color="#2EC4B6",  linewidth=1.5, label="Revenue")
+    ax.plot(days, cum_cost, color="#E63946",  linewidth=1.5, linestyle="--",
+            label="Raw mat. cost")
+    ax.set_ylabel("€ millions", fontsize=8)
+    ax.set_xlabel("Day", fontsize=8)
+    ax.legend(fontsize=6)
     _style_ax(ax, "Cumulative Revenue vs. Raw Material Cost")
 
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, f"dashboard_{scenario_id}.png")
+    filename = f"dashboard_{scenario_id}_{suffix}.png" if suffix else f"dashboard_{scenario_id}.png"
+    path = os.path.join(out_dir, filename)
     fig.savefig(path, dpi=130, bbox_inches="tight")
     plt.close(fig)
     return path

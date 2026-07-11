@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from .config import (
     PRODUCTS, SUPPLIERS, MACHINES, QUALITY, FINANCIAL,
-    HOURS_PER_DAY, BATCH_SIZE_UNITS,
+    HOURS_PER_DAY, BATCH_SIZE_UNITS, INITIAL_INVENTORY,
 )
 from .models import ProductionBatch, CustomerOrder, SupplierDelivery, BreakdownEvent
 
@@ -16,8 +16,9 @@ from .models import ProductionBatch, CustomerOrder, SupplierDelivery, BreakdownE
 class MetricsCollector:
     """Accumulates every event that happens during a simulation run."""
 
-    def __init__(self, env: "simpy.Environment") -> None:
+    def __init__(self, env: "simpy.Environment", scenario: str = "baseline") -> None:
         self.env = env
+        self.scenario = scenario
 
         # ── Event logs ────────────────────────────────────────────────────────
         self.completed_batches: List[ProductionBatch]  = []
@@ -115,15 +116,14 @@ class MetricsCollector:
                 k[key] = 0.0
 
         # ── Financial ─────────────────────────────────────────────────────────
-        rev_a = sum(
-            b.grade_a_units * PRODUCTS[b.product]["price_eur_unit"]
-            for b in batches
-        )
-        rev_b = sum(
-            b.grade_b_units * PRODUCTS[b.product]["price_eur_unit"] * QUALITY["grade_b_price_factor"]
-            for b in batches
-        )
-        raw_mat_cost   = sum(d.total_cost_eur  for d in self.deliveries)
+        total_revenue = sum(o.revenue_eur for o in orders)
+        from .config import SCENARIOS
+        safety_factor = SCENARIOS[self.scenario]["safety_stock_factor"]
+        initial_inv_cost = 0.0
+        for mat in SUPPLIERS:
+            init_qty = min(INITIAL_INVENTORY[mat] * safety_factor, SUPPLIERS[mat]["max_stock_t"])
+            initial_inv_cost += init_qty * SUPPLIERS[mat]["unit_cost_eur_t"]
+        raw_mat_cost   = initial_inv_cost + sum(d.total_cost_eur for d in self.deliveries)
         energy_cost    = k["total_batches"] * FINANCIAL["energy_cost_per_batch_eur"]
         labor_cost     = (sim_days * FINANCIAL["shifts_per_day"]
                           * FINANCIAL["labor_cost_per_shift_eur"])
@@ -131,7 +131,6 @@ class MetricsCollector:
         stockout_cost  = (sum(e["quantity_units"] for e in self.stockout_events)
                           * FINANCIAL["stockout_penalty_eur_unit"])
 
-        total_revenue = rev_a + rev_b
         total_cost    = raw_mat_cost + energy_cost + labor_cost + breakdown_cost + stockout_cost
 
         k["revenue_eur"]       = total_revenue
